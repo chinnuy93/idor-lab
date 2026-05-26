@@ -1,0 +1,16 @@
+{
+  "name": "darkctf-lab",
+  "version": "1.0.0",
+  "description": "CTF Security Lab - IDOR & Access Control Playground",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js",
+    "dev": "node api/index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

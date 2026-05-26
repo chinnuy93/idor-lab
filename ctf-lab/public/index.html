@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DarkCTF Lab — IDOR & Access Control Playground</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --surface-2: #1a1a24;
+      --surface-3: #22222e;
+      --border: #2a2a3a;
+      --border-hover: #3a3a50;
+      --text: #e2e2ec;
+      --text-dim: #8b8ba0;
+      --accent: #00f0ff;
+      --accent-dim: #00a8b3;
+      --accent-glow: rgba(0, 240, 255, 0.15);
+      --success: #00ff88;
+      --success-glow: rgba(0, 255, 136, 0.15);
+      --danger: #ff3366;
+      --danger-glow: rgba(255, 51, 102, 0.15);
+      --warning: #ffcc00;
+      --warning-glow: rgba(255, 204, 0, 0.15);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0, 240, 255, 0.015) 2px,
+        rgba(0, 240, 255, 0.015) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 1fr 320px;
+      gap: 24px;
+    }
+
+    @media (max-width: 1024px) {
+      .container { grid-template-columns: 1fr; }
+    }
+
+    header {
+      grid-column: 1 / -1;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 40px; height: 40px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 18px; color: var(--bg);
+      box-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    .logo h1 {
+      font-size: 24px; font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .logo span {
+      color: var(--accent);
+      text-shadow: 0 0 20px var(--accent-glow);
+    }
+
+    .user-panel {
+      display: flex; align-items: center; gap: 16px;
+    }
+
+    .current-user {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      padding: 8px 16px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--accent);
+    }
+
+    .current-user .role {
+      color: var(--text-dim);
+      font-size: 11px;
+    }
+
+    .token-switcher { position: relative; }
+
+    .token-btn {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 10px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      font-weight: 500;
+      display: flex; align-items: center; gap: 8px;
+      transition: all 0.2s;
+    }
+
+    .token-btn:hover {
+      border-color: var(--accent);
+      background: var(--surface-3);
+    }
+
+    .token-dropdown {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 8px;
+      min-width: 220px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-8px);
+      transition: all 0.2s;
+      z-index: 100;
+    }
+
+    .token-dropdown.active {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+    }
+
+    .token-option {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .token-option:hover { background: var(--surface-3); }
+
+    .token-option .avatar {
+      width: 32px; height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 12px; color: var(--bg);
+    }
+
+    .token-option .info { flex: 1; }
+    .token-option .name { font-weight: 600; font-size: 13px; }
+    .token-option .role-tag {
+      font-size: 10px; padding: 2px 8px;
+      border-radius: 4px; font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .role-tag.admin {
+      background: rgba(255, 51, 102, 0.15);
+      color: var(--danger);
+    }
+
+    .role-tag.user {
+      background: rgba(0, 240, 255, 0.1);
+      color: var(--accent);
+    }
+
+    .progress-section {
+      grid-column: 1 / -1;
+      margin-bottom: 8px;
+    }
+
+    .progress-bar {
+      height: 6px;
+      background: var(--surface-2);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 12px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--success));
+      border-radius: 3px;
+      transition: width 0.5s ease;
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+
+    .progress-text {
+      display: flex; justify-content: space-between;
+      font-size: 13px; color: var(--text-dim);
+      margin-top: 8px;
+    }
+
+    .challenges-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      gap: 20px;
+    }
+
+    .challenge-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      transition: all 0.3s;
+      position: relative;
+    }
+
+    .challenge-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+
+    .challenge-card.solved {
+      border-color: var(--success);
+      box-shadow: 0 0 20px var(--success-glow);
+    }
+
+    .challenge-card.solved::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, var(--success), transparent);
+    }
+
+    .card-header {
+      padding: 20px 20px 0;
+      display: flex; justify-content: space-between; align-items: flex-start;
+    }
+
+    .challenge-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--accent);
+      background: var(--accent-glow);
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(0, 240, 255, 0.2);
+    }
+
+    .challenge-status {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+
+    .challenge-status.locked {
+      background: var(--surface-2);
+      color: var(--text-dim);
+    }
+
+    .challenge-status.unlocked {
+      background: var(--success-glow);
+      color: var(--success);
+      box-shadow: 0 0 12px var(--success-glow);
+    }
+
+    .card-body {
+      padding: 16px 20px 20px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+
+    .card-desc {
+      font-size: 13px;
+      color: var(--text-dim);
+      line-height: 1.6;
+      margin-bottom: 16px;
+    }
+
+    .endpoint-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      padding: 6px 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--accent);
+      display: inline-block;
+      margin-bottom: 12px;
+    }
+
+    .endpoint-badge .method {
+      font-weight: 700;
+      margin-right: 4px;
+    }
+
+    .endpoint-badge .method.get { color: var(--success); }
+    .endpoint-badge .method.post { color: var(--warning); }
+    .endpoint-badge .method.put { color: #ff8844; }
+
+    .playground {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .playground-header {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 10px;
+      background: none;
+      border: none;
+      color: var(--text-dim);
+      font-family: 'Inter', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      border-bottom: 2px solid transparent;
+    }
+
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      background: rgba(0, 240, 255, 0.05);
+    }
+
+    .tab-btn:hover:not(.active) {
+      color: var(--text);
+      background: var(--surface-3);
+    }
+
+    .playground-body { padding: 16px; }
+
+    .input-group {
+      margin-bottom: 12px;
+    }
+
+    .input-group label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .input-group input,
+    .input-group textarea,
+    .input-group select {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      outline: none;
+      transition: all 0.2s;
+    }
+
+    .input-group input:focus,
+    .input-group textarea:focus,
+    .input-group select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .input-group textarea {
+      min-height: 80px;
+      resize: vertical;
+    }
+
+    .headers-input {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .btn-add-header {
+      background: var(--surface-3);
+      border: 1px dashed var(--border);
+      color: var(--text-dim);
+      padding: 8px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      width: 100%;
+      margin-top: 4px;
+      transition: all 0.2s;
+    }
+
+    .btn-add-header:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    .btn-send {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-dim));
+      border: none;
+      border-radius: 8px;
+      color: var(--bg);
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-top: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-send:hover {
+      box-shadow: 0 0 20px var(--accent-glow);
+      transform: translateY(-1px);
+    }
+
+    .btn-send:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .response-box {
+      margin-top: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .response-box.has-flag {
+      border-color: var(--success);
+      box-shadow: 0 0 20px var(--success-glow);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 20px var(--success-glow); }
+      50% { box-shadow: 0 0 40px var(--success-glow); }
+    }
+
+    .response-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      background: var(--surface-2);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .response-status {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .response-status.success { color: var(--success); }
+    .response-status.error { color: var(--danger); }
+
+    .response-time {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .response-body {
+      padding: 14px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.7;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .response-body .flag-highlight {
+      background: rgba(0, 255, 136, 0.15);
+      color: var(--success);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 700;
+      border: 1px solid rgba(0, 255, 136, 0.3);
+    }
+
+    .flag-banner {
+      display: none;
+      background: linear-gradient(135deg, rgba(0,255,136,0.1), rgba(0,255,136,0.05));
+      border: 1px solid var(--success);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 12px;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .flag-banner.visible { display: flex; }
+
+    .flag-banner .icon { font-size: 24px; }
+    .flag-banner .text { flex: 1; }
+    .flag-banner .label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--success);
+      font-weight: 700;
+    }
+    .flag-banner .value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--success);
+      margin-top: 2px;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 24px;
+      height: fit-content;
+    }
+
+    .sidebar-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .sidebar-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .flag-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .flag-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      transition: all 0.2s;
+    }
+
+    .flag-item.captured {
+      border-color: var(--success);
+      background: rgba(0, 255, 136, 0.05);
+    }
+
+    .flag-item .num {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      background: var(--surface-3);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: 700;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .flag-item.captured .num {
+      background: var(--success-glow);
+      color: var(--success);
+    }
+
+    .flag-item .name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-dim);
+    }
+
+    .flag-item.captured .name { color: var(--text); }
+
+    .flag-item .flag-text {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--success);
+      margin-top: 2px;
+    }
+
+    .hint-box {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      margin-top: 16px;
+    }
+
+    .hint-box .hint-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--warning);
+      margin-bottom: 8px;
+    }
+
+    .hint-box p {
+      font-size: 12px;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+
+    .hint-box code {
+      background: var(--surface-3);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--accent);
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--surface); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+    .spinner {
+      width: 16px; height: 16px;
+      border: 2px solid var(--surface-3);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+      margin-right: 8px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="logo">
+        <div class="logo-icon">CTF</div>
+        <h1>DarkCTF <span>Lab</span></h1>
+      </div>
+      <div class="user-panel">
+        <div class="current-user">
+          <div id="current-username">alice</div>
+          <div class="role" id="current-role">role: user</div>
+        </div>
+        <div class="token-switcher">
+          <button class="token-btn" id="token-btn" onclick="toggleDropdown()">
+            Switch User ▼
+          </button>
+          <div class="token-dropdown" id="token-dropdown">
+            <div class="token-option" onclick="switchUser('alice', 'user')">
+              <div class="avatar">A</div>
+              <div class="info"><div class="name">alice</div></div>
+              <span class="role-tag user">user</span>
+            </div>
+            <div class="token-option" onclick="switchUser('bob', 'user')">
+              <div class="avatar">B</div>
+              <div class="info"><div class="name">bob</div></div>
+              <span class="role-tag user">user</span>
+            </div>
+            <div class="token-option" onclick="switchUser('carol', 'user')">
+              <div class="avatar">C</div>
+              <div class="info"><div class="name">carol</div></div>
+              <span class="role-tag user">user</span>
+            </div>
+            <div class="token-option" onclick="switchUser('dave', 'admin')">
+              <div class="avatar">D</div>
+              <div class="info"><div class="name">dave</div></div>
+              <span class="role-tag admin">admin</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="progress-section">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <h2 style="font-size:18px; font-weight:700;">Challenges</h2>
+        <span style="font-size:13px; color:var(--text-dim);">7 total</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+      </div>
+      <div class="progress-text">
+        <span id="progress-count">0 / 7 captured</span>
+        <span id="progress-percent">0%</span>
+      </div>
+    </div>
+
+    <div class="challenges-grid" id="challenges-grid"></div>
+
+    <aside class="sidebar">
+      <div class="sidebar-card">
+        <div class="sidebar-title">🏴 Captured Flags</div>
+        <div class="flag-list" id="flag-list"></div>
+      </div>
+      <div class="sidebar-card">
+        <div class="sidebar-title">📋 Quick Reference</div>
+        <div style="font-size:12px; color:var(--text-dim); line-height:1.8;">
+          <p><strong style="color:var(--text);">Users:</strong></p>
+          <p>alice (id:1), bob (id:2)</p>
+          <p>carol (id:3), dave (id:4, admin)</p>
+          <p style="margin-top:12px;"><strong style="color:var(--text);">Orders:</strong></p>
+          <p>101, 102, 103, 104</p>
+          <p style="margin-top:12px;"><strong style="color:var(--text);">Invoices:</strong></p>
+          <p>INV-001, INV-002, INV-003, INV-ADM</p>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const currentUser = { username: 'alice', role: 'user' };
+    const capturedFlags = new Set();
+
+    const challenges = [
+      {
+        id: 1,
+        title: 'IDOR Read — User Enumeration',
+        desc: 'The endpoint returns user details by ID without checking if you own that account. Try enumerating user IDs to find the admin secret.',
+        method: 'GET',
+        path: '/api/user/:id',
+        inputs: [
+          { name: 'id', label: 'User ID', type: 'text', placeholder: '1', default: '1' }
+        ],
+        headers: [],
+        flag: 'FLAG{IDOR_READ_USER_001}'
+      },
+      {
+        id: 2,
+        title: 'IDOR Read — Order Enumeration',
+        desc: 'Orders use sequential IDs (101-104). There is no ownership validation. Access another user's order to capture the flag.',
+        method: 'GET',
+        path: '/api/order/:id',
+        inputs: [
+          { name: 'id', label: 'Order ID', type: 'text', placeholder: '101', default: '101' }
+        ],
+        headers: [],
+        flag: 'FLAG{IDOR_ORDER_ENUM_101}'
+      },
+      {
+        id: 3,
+        title: 'IDOR Write — Account Takeover',
+        desc: 'The update endpoint accepts a user ID in the request body and updates that user's email without verifying ownership. Take over the admin account.',
+        method: 'PUT',
+        path: '/api/user/update',
+        inputs: [
+          { name: 'id', label: 'Target User ID', type: 'text', placeholder: '1', default: '1' },
+          { name: 'email', label: 'New Email', type: 'text', placeholder: 'hacker@evil.com', default: 'hacker@evil.com' }
+        ],
+        bodyType: 'json',
+        headers: [],
+        flag: 'FLAG{IDOR_WRITE_ACCOUNT_TAKEOVER}'
+      },
+      {
+        id: 4,
+        title: 'IDOR POST Body — Invoice Download',
+        desc: 'Instead of passing the invoice ID in the URL, this endpoint reads it from the POST body. Try accessing invoices you shouldn't see.',
+        method: 'POST',
+        path: '/api/invoice/download',
+        inputs: [
+          { name: 'invoiceId', label: 'Invoice ID', type: 'text', placeholder: 'INV-001', default: 'INV-001' }
+        ],
+        bodyType: 'json',
+        headers: [],
+        flag: 'FLAG{IDOR_POST_BODY_INVOICE}'
+      },
+      {
+        id: 5,
+        title: '403 Bypass — Header Injection',
+        desc: 'The admin invoice endpoint returns 403 for normal users. Bypass it by sending four specific headers that trick the access control logic.',
+        method: 'GET',
+        path: '/api/invoice/INV-ADM',
+        inputs: [],
+        headers: [
+          { key: 'X-User-Role', value: 'admin' },
+          { key: 'X-Original-URL', value: '/' },
+          { key: 'Referer', value: 'http://localhost' },
+          { key: 'X-Forwarded-For', value: '127.0.0.1' }
+        ],
+        flag: 'FLAG{BYPASS_403_ADMIN_INVOICE}'
+      },
+      {
+        id: 6,
+        title: 'Broken Access Control — Admin Notes',
+        desc: 'The admin notes page only hides the UI link for non-admins. The server-side GET endpoint has no role check at all.',
+        method: 'GET',
+        path: '/api/admin/notes',
+        inputs: [],
+        headers: [],
+        flag: 'FLAG{BROKEN_ACCESS_CONTROL_NO_SSRF}'
+      },
+      {
+        id: 7,
+        title: 'Privilege Escalation — Self-Assigned Role',
+        desc: 'The registration endpoint accepts a "role" field from the request body. Register a new account with admin role.',
+        method: 'POST',
+        path: '/api/user/register',
+        inputs: [
+          { name: 'username', label: 'Username', type: 'text', placeholder: 'newuser', default: 'newuser' },
+          { name: 'email', label: 'Email', type: 'text', placeholder: 'new@example.com', default: 'new@example.com' },
+          { name: 'password', label: 'Password', type: 'text', placeholder: 'password123', default: 'password123' },
+          { name: 'role', label: 'Role', type: 'text', placeholder: 'user', default: 'user' }
+        ],
+        bodyType: 'json',
+        headers: [],
+        flag: 'FLAG{PRIVILEGE_ESCALATION_REGISTER}'
+      }
+    ];
+
+    function toggleDropdown() {
+      document.getElementById('token-dropdown').classList.toggle('active');
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.token-switcher')) {
+        document.getElementById('token-dropdown').classList.remove('active');
+      }
+    });
+
+    function switchUser(username, role) {
+      currentUser.username = username;
+      currentUser.role = role;
+      document.getElementById('current-username').textContent = username;
+      document.getElementById('current-role').textContent = 'role: ' + role;
+      document.getElementById('token-dropdown').classList.remove('active');
+    }
+
+    function renderChallenges() {
+      const grid = document.getElementById('challenges-grid');
+      grid.innerHTML = challenges.map(c => createChallengeCard(c)).join('');
+    }
+
+    function createChallengeCard(challenge) {
+      const isSolved = capturedFlags.has(challenge.flag);
+      const inputFields = challenge.inputs.map(inp => `
+        <div class="input-group">
+          <label>${inp.label}</label>
+          <input type="${inp.type}" id="input-${challenge.id}-${inp.name}" 
+                 placeholder="${inp.placeholder}" value="${inp.default || ''}">
+        </div>
+      `).join('');
+
+      const headerFields = challenge.headers.map((h, i) => `
+        <div class="headers-input" id="header-row-${challenge.id}-${i}">
+          <input type="text" value="${h.key}" id="header-key-${challenge.id}-${i}" placeholder="Header">
+          <input type="text" value="${h.value}" id="header-val-${challenge.id}-${i}" placeholder="Value">
+          <button onclick="removeHeader(${challenge.id}, ${i})" style="background:var(--surface-3);border:1px solid var(--border);color:var(--danger);border-radius:6px;cursor:pointer;font-size:11px;">✕</button>
+        </div>
+      `).join('');
+
+      const bodyTab = challenge.bodyType === 'json' ? `
+        <button class="tab-btn active" onclick="switchTab(${challenge.id}, 'body')">Body</button>
+      ` : '';
+
+      const bodyContent = challenge.bodyType === 'json' ? `
+        <div id="tab-body-${challenge.id}">
+          <div class="input-group">
+            <label>JSON Body</label>
+            <textarea id="body-${challenge.id}" placeholder='{"key": "value"}'></textarea>
+          </div>
+        </div>
+      ` : '';
+
+      return `
+        <div class="challenge-card ${isSolved ? 'solved' : ''}" id="card-${challenge.id}">
+          <div class="card-header">
+            <span class="challenge-num">CHALLENGE 0${challenge.id}</span>
+            <div class="challenge-status ${isSolved ? 'unlocked' : 'locked'}">
+              ${isSolved ? '🔓' : '🔒'}
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="card-title">${challenge.title}</div>
+            <div class="card-desc">${challenge.desc}</div>
+            <div class="endpoint-badge">
+              <span class="method ${challenge.method.toLowerCase()}">${challenge.method}</span>
+              ${challenge.path}
+            </div>
+
+            <div class="playground">
+              <div class="playground-header">
+                <button class="tab-btn active" onclick="switchTab(${challenge.id}, 'params')">Params</button>
+                ${bodyTab}
+                <button class="tab-btn" onclick="switchTab(${challenge.id}, 'headers')">Headers</button>
+              </div>
+              <div class="playground-body">
+                <div id="tab-params-${challenge.id}">
+                  ${inputFields}
+                </div>
+                ${bodyContent}
+                <div id="tab-headers-${challenge.id}" style="display:none;">
+                  <div id="headers-list-${challenge.id}">
+                    ${headerFields}
+                  </div>
+                  <button class="btn-add-header" onclick="addHeader(${challenge.id})">+ Add Header</button>
+                </div>
+                <button class="btn-send" id="btn-send-${challenge.id}" onclick="sendRequest(${challenge.id})">
+                  Send Request
+                </button>
+              </div>
+            </div>
+
+            <div class="response-box hidden" id="response-${challenge.id}">
+              <div class="response-header">
+                <span class="response-status" id="status-${challenge.id}">200 OK</span>
+                <span class="response-time" id="time-${challenge.id}">0ms</span>
+              </div>
+              <div class="response-body" id="body-res-${challenge.id}"></div>
+            </div>
+
+            <div class="flag-banner" id="flag-${challenge.id}">
+              <span class="icon">🏴</span>
+              <div class="text">
+                <div class="label">Flag Captured!</div>
+                <div class="value" id="flag-text-${challenge.id}"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function switchTab(challengeId, tab) {
+      const card = document.getElementById(`card-${challengeId}`);
+      const tabs = card.querySelectorAll('.tab-btn');
+      tabs.forEach(t => t.classList.remove('active'));
+      event.target.classList.add('active');
+
+      ['params', 'body', 'headers'].forEach(t => {
+        const el = document.getElementById(`tab-${t}-${challengeId}`);
+        if (el) el.style.display = t === tab ? 'block' : 'none';
+      });
+    }
+
+    let headerCounters = {};
+
+    function addHeader(challengeId) {
+      const challenge = challenges.find(c => c.id === challengeId);
+      if (!headerCounters[challengeId]) headerCounters[challengeId] = challenge ? challenge.headers.length : 0;
+      const i = headerCounters[challengeId]++;
+      const list = document.getElementById(`headers-list-${challengeId}`);
+      const div = document.createElement('div');
+      div.className = 'headers-input';
+      div.id = `header-row-${challengeId}-${i}`;
+      div.innerHTML = `
+        <input type="text" id="header-key-${challengeId}-${i}" placeholder="Header">
+        <input type="text" id="header-val-${challengeId}-${i}" placeholder="Value">
+        <button onclick="removeHeader(${challengeId}, ${i})" style="background:var(--surface-3);border:1px solid var(--border);color:var(--danger);border-radius:6px;cursor:pointer;font-size:11px;">✕</button>
+      `;
+      list.appendChild(div);
+    }
+
+    function removeHeader(challengeId, index) {
+      const row = document.getElementById(`header-row-${challengeId}-${index}`);
+      if (row) row.remove();
+    }
+
+    async function sendRequest(challengeId) {
+      const challenge = challenges.find(c => c.id === challengeId);
+      const btn = document.getElementById(`btn-send-${challengeId}`);
+      const responseBox = document.getElementById(`response-${challengeId}`);
+      const statusEl = document.getElementById(`status-${challengeId}`);
+      const timeEl = document.getElementById(`time-${challengeId}`);
+      const bodyEl = document.getElementById(`body-res-${challengeId}`);
+      const flagBanner = document.getElementById(`flag-${challengeId}`);
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Sending...';
+
+      let url = challenge.path;
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-User-Token': currentUser.username
+      };
+
+      const headerRows = document.querySelectorAll(`[id^="header-row-${challengeId}-"]`);
+      headerRows.forEach(row => {
+        const idx = row.id.split('-').pop();
+        const key = document.getElementById(`header-key-${challengeId}-${idx}`)?.value;
+        const val = document.getElementById(`header-val-${challengeId}-${idx}`)?.value;
+        if (key && val) headers[key] = val;
+      });
+
+      let body = null;
+      if (challenge.inputs.length > 0) {
+        if (challenge.method === 'GET') {
+          challenge.inputs.forEach(inp => {
+            const val = document.getElementById(`input-${challengeId}-${inp.name}`).value;
+            url = url.replace(':' + inp.name, val);
+          });
+        } else {
+          if (challenge.bodyType === 'json') {
+            const bodyText = document.getElementById(`body-${challengeId}`)?.value;
+            if (bodyText) {
+              try { body = JSON.parse(bodyText); } catch(e) { body = {}; }
+            } else {
+              body = {};
+              challenge.inputs.forEach(inp => {
+                const val = document.getElementById(`input-${challengeId}-${inp.name}`).value;
+                body[inp.name] = val;
+              });
+            }
+          }
+        }
+      }
+
+      challenge.inputs.forEach(inp => {
+        if (url.includes(':' + inp.name)) {
+          const val = document.getElementById(`input-${challengeId}-${inp.name}`).value;
+          url = url.replace(':' + inp.name, val);
+        }
+      });
+
+      const start = performance.now();
+      try {
+        const res = await fetch(url, {
+          method: challenge.method,
+          headers,
+          body: body ? JSON.stringify(body) : undefined
+        });
+        const duration = Math.round(performance.now() - start);
+        const data = await res.json().catch(() => ({}));
+
+        statusEl.textContent = res.status + ' ' + (res.statusText || '');
+        statusEl.className = 'response-status ' + (res.ok ? 'success' : 'error');
+        timeEl.textContent = duration + 'ms';
+
+        const jsonStr = JSON.stringify(data, null, 2);
+        const highlighted = jsonStr.replace(
+          /(FLAG\{[^}]+\})/g,
+          '<span class="flag-highlight">$1</span>'
+        );
+        bodyEl.innerHTML = highlighted;
+
+        responseBox.classList.remove('hidden');
+
+        const flagMatch = JSON.stringify(data).match(/FLAG\{[^}]+\}/);
+        if (flagMatch && !capturedFlags.has(flagMatch[0])) {
+          capturedFlags.add(flagMatch[0]);
+          document.getElementById(`flag-text-${challengeId}`).textContent = flagMatch[0];
+          flagBanner.classList.add('visible');
+          responseBox.classList.add('has-flag');
+          document.getElementById(`card-${challengeId}`).classList.add('solved');
+          document.querySelector(`#card-${challengeId} .challenge-status`).classList.remove('locked');
+          document.querySelector(`#card-${challengeId} .challenge-status`).classList.add('unlocked');
+          document.querySelector(`#card-${challengeId} .challenge-status`).textContent = '🔓';
+          updateSidebar();
+          updateProgress();
+        }
+      } catch (err) {
+        statusEl.textContent = 'ERROR';
+        statusEl.className = 'response-status error';
+        bodyEl.textContent = err.message;
+        responseBox.classList.remove('hidden');
+      }
+
+      btn.disabled = false;
+      btn.textContent = 'Send Request';
+    }
+
+    function updateSidebar() {
+      const list = document.getElementById('flag-list');
+      list.innerHTML = challenges.map((c, i) => {
+        const captured = capturedFlags.has(c.flag);
+        return `
+          <div class="flag-item ${captured ? 'captured' : ''}">
+            <div class="num">${i + 1}</div>
+            <div>
+              <div class="name">${c.title}</div>
+              ${captured ? `<div class="flag-text">${c.flag}</div>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function updateProgress() {
+      const count = capturedFlags.size;
+      const pct = Math.round((count / 7) * 100);
+      document.getElementById('progress-fill').style.width = pct + '%';
+      document.getElementById('progress-count').textContent = count + ' / 7 captured';
+      document.getElementById('progress-percent').textContent = pct + '%';
+    }
+
+    renderChallenges();
+    updateSidebar();
+  </script>
+</body>
+</html>
